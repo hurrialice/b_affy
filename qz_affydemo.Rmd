@@ -18,7 +18,7 @@ library(affy)
 library(simpleaffy)
 library(dplyr)
 library(readr)
-setwd("~/b_affy")
+
 getGEOSuppFiles("GSE48060")
 untar("GSE48060/GSE48060_RAW.tar", exdir="data")
 cels <- list.files("data/", pattern = "[gz]")
@@ -105,6 +105,9 @@ set("labels_col", new_phl) %>% # change color
 ```
 ## filter genes
 ```{r genefilter}
+library(genefilter)
+
+
 
 ```
 
