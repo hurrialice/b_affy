@@ -4,14 +4,13 @@ author: "Q.Zhang"
 date: "9/27/2017"
 output: html_document
 ---
-## Setup
-```{r setup}
+```{r setup, include=FALSE}
 knitr::opts_chunk$set(eval = FALSE)
 
 ```
 
 ## get data
-The data is downloaded via `GEOquery` package, SOFT files are downloaded mannually into this directory.
+The data is downloaded via `GEOquery` package, untared and batch-unzipped. SOFT files are downloaded manually into this directory.
 
 ```{r get data, eval=FALSE}
 library(GEOquery)
@@ -48,10 +47,12 @@ ph <- tibble(sample_name = pheno_raw$sample,
                           p = pheno_raw$sample,MoreArgs = list(x = files))],
              disease_state = c(rep('AMI', 31), rep("control", 21)),
              recur = NA)
+
+# modify the labels
 ph$recur[grepl('without', pheno_raw$description)] <- 'AMI_no'
 ph$recur[grepl('control', pheno_raw$description)] <- 'control'        
 ph$recur[is.na(ph$recur)] <- 'AMI_yes'
-# !have a look
+# have a look
 ph
 write_tsv(ph, 'data/phenodata.txt')
 ```
@@ -62,12 +63,16 @@ write_tsv(ph, 'data/phenodata.txt')
 
 Here we use PCA for simple clustering, however there is no obvious pattern... Neither is hclust....
 
-```{r rma normalize and PCA}
+```{r rma normalize}
 celpath = "data/"
 data = ReadAffy(celfile.path=celpath)
 data@phenoData@data[,1] <- ph$recur
 data.rma = rma(data)
 data.matrix = exprs(data.rma)
+
+```
+
+```{r simple clustering}
 # PCA
 color=c(rep('red', 31), rep('green', 21))
 data.PC = prcomp(t(data.matrix),scale.=FALSE)
@@ -89,7 +94,18 @@ set("labels_col", new_phl) %>% # change color
   set("labels_cex", 1) %>% # Change size
     plot(main = "hierarchical clustering of samples") # plot
 
-labelColors = c("#CDB380", "#036564", "#EB6841", "#EDC951")
+```
+
+
+## quality control steps
+```{r qc}
+
+
+
+```
+## filter genes
+```{r genefilter}
+
 ```
 
 ## compare two groups: control and disease
@@ -115,7 +131,7 @@ data.fit.eb = eBayes(data.fit.con)
 
 ```{r DE and annotate}
 options(digits=2)
-tab = topTable(data.fit.eb,coef=1,number=200,adjust.method="BH")
+tab = topTable(data.fit.eb,coef=1,number=20000,adjust.method="BH")
 volcanoplot(data.fit.eb,coef=1,highlight=10)
 
 library(hgu133plus2.db)
