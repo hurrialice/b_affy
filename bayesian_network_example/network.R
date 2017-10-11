@@ -1,13 +1,6 @@
-setwd("F:\\Project_group\\Git_Project\\FHIR\\b_affy\\test_branch")
+# setwd("F:\\Project_group\\Git_Project\\FHIR\\b_affy\\test_branch")
 
 library("bnlearn")
-
-# data pre process, including feature select and discrezation
-source("pre_process.R")
-data_file = "feature_table.rds"
-dataset <- load_data(data_file)
-subset <- feature_filter(dataset)
-disset <- discrezation(subset)
 
 # structure learning
 struc_learn <- function(dataset, algorithm='mmhc'){

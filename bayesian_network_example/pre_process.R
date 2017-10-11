@@ -1,4 +1,4 @@
-setwd("F:\\Project_group\\Git_Project\\FHIR\\b_affy\\test_branch")
+# setwd("F:\\Project_group\\Git_Project\\FHIR\\b_affy\\test_branch")
 
 # load data
 load_data <- function(data_file="feature_table.rds", label="label", postive_label="AMI"){
@@ -34,9 +34,14 @@ feature_filter <- function(dataset, label="label", fold_limit=1, correlation=0.8
         }
     }
     features[idx+1] <- label
-    sub_dataset <- subset(dataset, select = unlist(features))
-    # write.csv(sub_dataset, "sub_dataset.csv")
-    return(sub_dataset)
+    subset <- subset(dataset, select = unlist(features))
+    # write.csv(subset, "subset.csv")
+    return(subset)
+}
+
+feature_list <- function(dataset){
+    fealist <- names(dataset)
+    return(fealist)
 }
 
 # discrezation with thress threshold
