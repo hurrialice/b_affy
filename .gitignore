@@ -9,3 +9,8 @@ GDS5074.soft.gz
 *.csv
 *.Rmd
 *.html
+*.rds
+*.tsv
+
+bn.R
+dir.R
