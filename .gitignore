@@ -17,4 +17,5 @@ dir.R
 !data_matrix.rds
 !phenodata.rds
 !feature_table.rds
+!deg.rds
 .Rprofile.swp
