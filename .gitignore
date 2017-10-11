@@ -14,5 +14,7 @@ GDS5074.soft.gz
 
 bn.R
 dir.R
-
+!data_matrix.rds
+!phenodata.rds
+!feature_table.rds
 .Rprofile.swp
