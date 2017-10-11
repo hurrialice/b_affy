@@ -1,17 +1,29 @@
-# setwd("F:\\Project_group\\Git_Project\\FHIR\\b_affy\\r_analyze")
+setwd("F:\\Project_group\\Git_Project\\FHIR\\b_affy\\test_branch")
 
 library("bnlearn")
-# library("BiocGenerics")
+
+# data pre process, including feature select and discrezation
+source("pre_process.R")
+data_file = "feature_table.rds"
+dataset <- load_data(data_file)
+subset <- feature_filter(dataset)
+disset <- discrezation(subset)
 
 # structure learning
-dataset = "test_data.txt"
-datas = read.table(dataset, header = TRUE, colClasses = c("numeric"))
-names(datas)<-c("L", "1", "2", "3", "4", "5", "6", "7", "8")
-mmhc_net = mmhc(datas)
-print(mmhc_net)
-graphviz.plot(mmhc_net)
+struc_learn <- function(dataset, algorithm='mmhc'){
+    if(algorithm == 'mmhc'){
+        net_stru = mmhc(dataset)
+    }
+    return(net_stru)
+}
 
-# mmhc_net = set.arc(mmhc_net, from = "B", to = "A")
+net_info <- function(net_stru){
+    print(net_stru)
+    graphviz.plot(net_stru)
+}
 
 # parameter learning 
-params = bn.fit(mmhc_net, datas)
+param_learn <- function(net_stru, dataset){
+    cpt <- bn.fit(net_stru, dataset)
+    return(cpt)
+}
