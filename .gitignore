@@ -12,7 +12,7 @@ GDS5074.soft.gz
 *.rds
 *.tsv
 
-bn.R
+
 dir.R
 !data_matrix.rds
 !phenodata.rds
