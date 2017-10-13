@@ -1,6 +1,7 @@
 
 ## ----- misc -----------
 setwd('~/b_affy/bn_mod')
+# setwd('F:\\Project_group\\Git_Project\\FHIR\\b_affy\\bn_mod')
 
 library(readr)
 library(dplyr)
@@ -45,8 +46,6 @@ feature_cut <- function(ft = feature_table, nc = 2){
 }
 
 
-
-
 # featrue_filter 
 featrue_filter <- function(df = discre_features, cut = 0.4){
   outcome <- df$label
@@ -55,12 +54,28 @@ featrue_filter <- function(df = discre_features, cut = 0.4){
   df[,sel.fs]
 }
 
+# partial integration
+partial_integration <- function(dataset){
+    # divide features into two/more groups
+    # build two/more bayes networks with outcome
+    # union of those networks
+    return(union_network)
+}
+
 
 # structure learning
 struc_learn <- function(dataset, algorithm='mmhc'){
   if(algorithm == 'mmhc'){
-    net_stru = mmhc(dataset)
-  }
+        net_stru = mmhc(dataset)
+    } else if(algorithm == 'rsmax2'){
+        net_stru = rsmax2(dataset)
+    } else if(algorithm == 'tabu'){
+        net_stru = tabu(dataset)
+    } else if(algorithm == 'hc'){
+        net_stru = hc(dataset)
+    } else{
+        stop(("algorithm name error !!"))
+    }
   return(net_stru)
 }
 
