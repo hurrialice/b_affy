@@ -1,7 +1,7 @@
 
 ## ----- misc -----------
-setwd('~/b_affy/bn_mod')
-# setwd('F:\\Project_group\\Git_Project\\FHIR\\b_affy\\bn_mod')
+# setwd('~/b_affy/bn_mod')
+setwd('F:\\Project_group\\Git_Project\\FHIR\\b_affy\\bn_mod')
 
 library(readr)
 library(dplyr)
@@ -32,7 +32,7 @@ make_feature_table <- function(ph. = ph, deg = tab, dm = data.matrix){
 
 
 # make discrete
-feature_cut <- function(ft = feature_table, nc = 2){
+feature_cut <- function(ft, nc = 2){
   ftm <- ft[,-which(names(ft) == "label")]
   #browser()
   #ftl <- split(ftm, col(ftm))
@@ -47,7 +47,7 @@ feature_cut <- function(ft = feature_table, nc = 2){
 
 
 # featrue_filter 
-featrue_filter <- function(df = discre_features, cut = 0.4){
+featrue_filter <- function(df, cut = 0.4){
   outcome <- df$label
   fcor <- apply(df, 2, function(f) cor(f, outcome, method = 'pearson'))
   sel.fs <- names(fcor)[abs(fcor) > cut]
@@ -95,11 +95,11 @@ param_learn <- function(net_stru, dataset){
 # get features
 
 featrue_table <- make_feature_table()
-discre_features <- feature_cut()
-fin.fs <- featrue_filter()
+discre_features <- feature_cut(featrue_table)
+fin.fs <- featrue_filter(discre_features)
 
 # network learning
 
-net_stru <- struc_learn(fin.fs, algorithm='mmhc')
+net_stru <- struc_learn(fin.fs, algorithm='rsmax2')
 cpts <- param_learn(net_stru, fin.fs)
 net_info(net_stru)
