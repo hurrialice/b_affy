@@ -106,7 +106,9 @@ Since we are facing a copious of probes, dimension reduction becomes inevitable.
 
 First PCA is used, however the combination of first three dimensions did not give satisfactory divergence between AMI and controls. Hence the resulting dendrogram did not separate two classes well enough (see the graph below).
 
-Then we turn to tsne, which is aims for dimensionality reduction that is particularly well suited for the visualization of high-dimensional datasets. However such divergence is questionable if we permuate seed, which suggest tsne is not yet robust enough to separating the two categories. This result somehow suggested the need for feature selection before constructing bayesian network classifier.
+Then we turn to tsne, which is aims for dimensionality reduction that is particularly well suited for the visualization of high-dimensional datasets. However such divergence is questionable if we permuate seed, which suggest tsne is not yet robust. This result somehow suggested the need for feature selection before constructing bayesian network classifier.
+
+In the following plots, red represents AMI samples while green refers to the controls.
 
 ```{r dr_cluster}
 library(Rtsne)
@@ -175,7 +177,7 @@ hclust_pipe(tsne_df, method = 't-SNE')
 ```
 
 ## future work for this section: 
-We will apply `caret` package for feature selection prior to any dimensio reduction techniques, but now there is some installation problem here.
+We will apply `caret` package for feature selection prior to any dimensio reduction techniques, but now there is some installation problem here...
 
 
 <br>
@@ -250,7 +252,7 @@ d3heatmap(dem, scale = "none", dendrogram = "none" )
 ```
 
 # Pathways and ontologies
-The above differential expression table is then imported into [Reactome]("reactome.org") browser, and here is the briefing of the result with pValue < 0.05 and FDR < 0.5. Here we use gprofilerR API for GO enrichment. 
+The above differential expression table is then imported into [Reactome](reactome.org) browser, and here is the briefing of the result with pValue < 0.05 and FDR < 0.5. Here we use gprofilerR API for GO enrichment. 
 
 The original paper used GenGo Metacore software (which requires purchasing) and identified siz pathway related to `immune response`, featuring `apoptosis`, `coagulation` and `interleukin signaling`, which agrees quite well with our result despite minor divergence.
 
@@ -272,9 +274,13 @@ gpgenes <- gprofiler(genes) %>% tbl_df()
 
 gp <- gpgenes %>% dplyr::select(term.id, term.name, domain, p.value) %>% dplyr::filter(p.value < 0.01) 
 gp1 <- gp[match(sort(gp$p.value),gp$p.value),]
+gp1$p.value <- as.character(gp1$p.value)# for sake of visualization
 knitr::kable(head(gp1))
 
 ```
 
 # future work
-Now we are trying different method for feature discretization and network consturction. Many thanks to Yufeng Zhang, Haipeng Wang for their help and encouragement, it has been one of the happiest days working with them. Thanks Gil for offering me this oppotunity. For the latest progress update please check [this repo]("https://github.com/hurrialice/b_affy").
+Now we are trying different method for feature discretization and network consturction. Many thanks to Yufeng Zhang, Haipeng Wang for their help and encouragement, it has been one of the happiest days working with them. Thanks Gil for offering me this oppotunity. For the latest progress update please check [this repo](https://github.com/hurrialice/b_affy).
+```{r end}
+sessionInfo()
+```
