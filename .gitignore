@@ -7,8 +7,6 @@ data/
 GDS5074.soft.gz
 *demo*
 *.csv
-*.Rmd
-*.html
 *.rds
 *.tsv
 
