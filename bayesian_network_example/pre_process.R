@@ -34,9 +34,25 @@ feature_filter <- function(dataset, label="label", fold_limit=1, correlation=0.8
         }
     }
     features[idx+1] <- label
-    subset <- subset(dataset, select = unlist(features))
+    sub_set <- subset(dataset, select = unlist(features))
     # write.csv(subset, "subset.csv")
-    return(subset)
+    return(sub_set)
+}
+
+sub_features <- function(dataset, start, end){
+    if(start > end){
+        tmp = end
+        end = start
+        start = tmp
+    }
+    outcome <- dataset$label
+    subset <- dataset[,start:end]
+    subset$label <- dataset$label
+    return(subset) 
+}
+
+extract_features <- function(dataset, net_stru){
+    return(subset(dataset, select = nodes(net_stru)))
 }
 
 feature_list <- function(dataset){
@@ -45,8 +61,12 @@ feature_list <- function(dataset){
 }
 
 # discrezation with thress threshold
-discrezation <- function(dataset, label="label", psigma=0.4){
+discrezation <- function(dataset, label="label", psigma=0.3){
 
+    # if(psigma > 0.5){
+    #     psigma <- 1-psigma
+    # }
+    
     for(i in 1:length(dataset)){
         if(names(dataset)[i] == label){
             next

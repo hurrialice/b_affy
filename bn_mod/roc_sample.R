@@ -1,14 +1,11 @@
-library(ROCR)
 
 
 ## ----- misc -----------
-setwd('~/b_affy')
-# setwd('F:\\Project_group\\Git_Project\\FHIR\\b_affy\\bn_mod')
+# setwd('~/b_affy')
+setwd('F:\\Project_group\\Git_Project\\FHIR\\b_affy\\bn_mod')
 
 library(bnlearn)
 library(Rgraphviz)
-
-data("coronary")
 
 
 # structure learning
@@ -43,14 +40,18 @@ param_learn <- function(net_stru, dataset){
 
 # network learning
 
+
+library(ROCR)
+data("coronary")
+
 net_stru <- struc_learn(coronary, algorithm='rsmax2')
 cpts <- param_learn(net_stru, coronary)
 net_info(net_stru)
 
 
-
 bt_strength <- boot.strength(data = coronary, algorithm = 'rsmax2')
 pred <- as.prediction(bt_strength, net_stru)
 perf <- performance(pred, 'tpr', 'fpr')
+auc <- performance(pred, 'auc')
 plot(perf, colorize = T)
 
