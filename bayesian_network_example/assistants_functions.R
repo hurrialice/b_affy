@@ -1,5 +1,3 @@
-# setwd("F:\\Project_group\\Git_Project\\FHIR\\b_affy\\test_branch")
-
 # load data
 load_data <- function(data_file="feature_table.rds", label="label", postive_label="AMI"){
     dataset <- readRDS(data_file)   # class data.frame
@@ -16,7 +14,7 @@ load_data <- function(data_file="feature_table.rds", label="label", postive_labe
     return(dataset)
 }
 
-# feature selection
+# feature selection by correlation
 feature_filter <- function(dataset, label="label", fold_limit=1, correlation=0.8){
     # filter by fold change value
     # calculate correlation between sub_datasetfeature and outcome
@@ -39,29 +37,20 @@ feature_filter <- function(dataset, label="label", fold_limit=1, correlation=0.8
     return(sub_set)
 }
 
-sub_features <- function(dataset, start, end){
+sub_set_by_hand <- function(dataset, start, end){
     if(start > end){
         tmp = end
         end = start
         start = tmp
     }
     outcome <- dataset$label
-    subset <- dataset[,start:end]
-    subset$label <- dataset$label
-    return(subset) 
+    sub_set <- dataset[,start:end]
+    sub_set$label <- dataset$label
+    return(sub_set) 
 }
 
-extract_features <- function(dataset, net_stru){
-    return(subset(dataset, select = nodes(net_stru)))
-}
-
-feature_list <- function(dataset){
-    fealist <- names(dataset)
-    return(fealist)
-}
-
-# discrezation with thress threshold
-discrezation <- function(dataset, label="label", psigma=0.3){
+# discrezation by gaussian discription
+disc_by_gauss <- function(dataset, label="label", psigma=0.3){
 
     # if(psigma > 0.5){
     #     psigma <- 1-psigma
@@ -88,3 +77,21 @@ discrezation <- function(dataset, label="label", psigma=0.3){
     # write.csv(dataset, "dis_dataset.csv")
     return(dataset)
 }
+
+# struc_learn algorithm include hc, tabu, mmhc, rsmax2
+struc_learn <- function(dataset, algorithm='rsmax2'){
+    library("bnlearn")
+    if(algorithm == 'mmhc'){
+        net_stru = mmhc(dataset)
+    } else if(algorithm == 'rsmax2'){
+        net_stru = rsmax2(dataset)
+    } else if(algorithm == 'tabu'){
+        net_stru = tabu(dataset)
+    } else if(algorithm == 'hc'){
+        net_stru = hc(dataset)
+    } else{
+        stop(("algorithm name error !!"))
+    }
+    return(net_stru)
+}
+
