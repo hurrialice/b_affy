@@ -78,9 +78,10 @@ disc_by_gauss <- function(dataset, label="label", psigma=0.3){
     return(dataset)
 }
 
+library("bnlearn")
+
 # struc_learn algorithm include hc, tabu, mmhc, rsmax2
 struc_learn <- function(dataset, algorithm='rsmax2'){
-    library("bnlearn")
     if(algorithm == 'mmhc'){
         net_stru = mmhc(dataset)
     } else if(algorithm == 'rsmax2'){
@@ -95,3 +96,24 @@ struc_learn <- function(dataset, algorithm='rsmax2'){
     return(net_stru)
 }
 
+# predict test dataset via cpt of network
+idx <- 1 # i don't know why, but if no idx declaration there then idx will not be found in above for{}
+cpt_predict <- function(test_set, cpts){
+    predicts <- c()
+    for(idx in 1:length(test_set[,1])){
+    
+        cell <- cpquery(cpts, 
+                        event    = (label == as.character(test_set$label[idx])), 
+                        evidence = ((EXOSC1 == as.character(test_set$EXOSC1[idx])) & 
+                                    (KCNJ15 == as.character(test_set$KCNJ15[idx])) & 
+                                    (LOC400499 == as.character(test_set$LOC400499[idx])) & 
+                                    (PRF1 == as.character(test_set$PRF1[idx])) & 
+                                    (S100A8 == as.character(test_set$S100A8[idx])) & 
+                                    (TLR10 == as.character(test_set$TLR10[idx])) & 
+                                    (TMED2 == as.character(test_set$TMED2[idx])))
+                        )
+        cat("index", idx, " predict:", cell, "\n")
+        predicts <- c(predicts, cell)    
+    }
+    return(predicts) 
+}
