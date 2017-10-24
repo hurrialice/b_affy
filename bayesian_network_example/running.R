@@ -1,17 +1,18 @@
 setwd("F:/Project_group/Git_Project/FHIR/b_affy/test_branch")
+setwd('/home/qingzhang/b_affy2/bayesian_network_example')
 
 source("assistants_functions.R")
 
-library("readtext")
+#library("readtext")
 library("ROCR")
 library("bnlearn")
 library("Rgraphviz")
-
+library(readr)
 
 dataset <- load_data(data_file = "feature_table.rds")
 
-net_string <- readtext("net_structure.txt")     # net structure txt
-net_stru <- model2network(net_string$text)      # set net structure by hand
+net_string <- read_lines("net_structure.txt")     # net structure txt
+net_stru <- model2network(net_string)      # set net structure by hand
 # img <- graphviz.plot(net_stru, highlight = list(nodes = 'label')) # visualized net structure
 sub_set <- subset(dataset, select = nodes(net_stru))    # build sub_set from net_stru
 dis_set <- discretize(sub_set, method = "interval", breaks = 2) # discrezation by bnlearn 
