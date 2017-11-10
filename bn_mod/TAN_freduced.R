@@ -94,7 +94,7 @@ k_fold_validation <- function(ft, k){
     tan_stru <- tree.bayes(x = train, training = "label", explanatory = head(colnames(train), -1))
     fitted = bn.fit(tan_stru, train, method = "bayes")
     
-    #browser()
+    browser()
     # make prediction to train data
     pred = predict(fitted, test, prob = TRUE)
     results_prob = data.frame(t(attributes(pred)$prob))
