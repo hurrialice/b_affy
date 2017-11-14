@@ -44,7 +44,7 @@ DE_pipe <- function(m, lab){
   # compare
   huvec_fits <- contrasts.fit(fit, contrast.matrix)
   huvec_ebFit <- eBayes(huvec_fits)
-  tab <- topTable(huvec_ebFit, coef=1,lfc = 0.5, number = 1000)   
+  tab <- topTable(huvec_ebFit, coef=1,lfc = 0.26, number = 1000)   
   tab <- tab[tab$P.Value < 0.05,]
   return(tab)
 }
@@ -53,7 +53,7 @@ DE_pipe <- function(m, lab){
 ## ---------- entrez and symbols ---------
 anno <- function(chip = hgu133plus2.db, t ){
   gs2 <- AnnotationDbi::select(x = chip, keys = rownames(tab), keytype = 'PROBEID',
-                               columns = c('ENTREZID','GENENAME','SYMBOL', 'UNIPROT')) %>% tbl_df()
+                               columns = c('ENTREZID','GENENAME','SYMBOL')) %>% tbl_df()
   tab$PROBEID <- rownames(tab)
   tab <- left_join(tab, gs2) %>% tbl_df()
 }
@@ -185,14 +185,14 @@ make_wl <- function(t, a){
   
 
   # browser()
-  bet <- betweenness(deg)
-  bet <- bet[bet > 1]
-  
+  # bet <- betweenness(deg)
+  # degr <- degree(deg)
+  return(deg)
   
   # # browser()
   # tonodes <- entre2syms(names(bet))[bet > 0 ] #& seq_along(bet) < 8]
   # df <- data.frame(from = 'label', to = tonodes)
-  return(b)
+  #return(degr)
 }
 
 ## ----- get DE-based feature table ----
@@ -210,6 +210,27 @@ make_wl <- function(t, a){
 #   
 # }
 
+
+## ----- use string protein interaction network ----
+
+prepare_string <- function(tabs){
+  dir.create("DE_genes")
+  syms <- lapply(tabs, function(t) t$SYMBOL)
+  for (i in seq_along(syms)){
+    df <- data.frame(syms[[i]])
+    write_csv(df, paste0('DE_genes/', i,'.csv'))
+  }
+}
+
+getg_string <- function(path = 'stringnet_folds'){
+  folds_name <- list.files(path)
+  gs <- lapply(folds_name, function(nfold){
+    tsv <- read_tsv(paste(path, nfold, sep = '/'))
+    df <- data.frame(A = tsv$`#node1`, B = tsv$node2)
+    graph.data.frame(df, directed = F)
+  })
+}
+### ----- featrue tables --------
 shrink_features <- function(ori_dm, fea_names, dict = bg_genes){
   m <- t(ori_dm)
   colnames(m) <- dict$SYMBOL[match(colnames(m), dict$PROBEID)]
@@ -234,4 +255,33 @@ boot_tabu <- function(ori_tab){
 
 
 ## ----- exact graphs --------
+make_avgnet <- function(boot){
+  bstr <- boot$strength
+  bstr <- bstr[bstr > 0]
+  bstr_cut_label <- max(boot$strength[boot$from == 'label' | boot$to == 'label']) - 0.00001
+  bstr_cut_all <- quantile(bstr, 0.7)
+  bstr_cut <- min(bstr_cut_all, bstr_cut_label)
+  averaged.network(boot, threshold = bstr_cut_label)
+}
 
+
+mod_syms <- function(all, cs){
+  two_comm <- unlist(cs[lengths(cs) <= 2])
+  one_comm <- all[!all %in% unlist(cs)]
+  
+  #browser()
+  cs[lengths(cs) <= 2] <- NULL
+  ncom <- length(cs)
+  names(cs) <- seq(ncom)
+  cs[[ncom+1]] <- unname(c(one_comm, two_comm))
+  names(cs) <- seq(ncom+1)
+  return(cs)
+}
+
+
+getsubgraph <- function(arcdf){
+  g <- graph.data.frame(arcdf)
+  subcom <- subcomponent(g, 'label', 'all')
+  sub_graph <- subgraph(g,subcom)
+  as_edgelist(sub_graph)
+}

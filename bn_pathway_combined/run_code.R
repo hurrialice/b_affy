@@ -54,12 +54,19 @@ tabugsf <- list()
 
 predicts <- list()
 labels <- list()
-spia_resf <- list()
+# spia_resf <- list()
 fc_resf <- list()
 true_fts <- list()
 
-
-
+train_labels <- list()1
+2
+3
+4
+data(learning.test)
+res = gs(learning.test)
+cpdag(res)
+vstructs(res)
+test_labels <- list()
 # ## ---- load resumed files -----
 # tids <- read_rds('tids_uniform.rds')
 # spia_res <- read_rds('spia_tables.rds')
@@ -93,54 +100,59 @@ for (i in seq_along(tids)){
 }
 
 # save: tabs
-write_rds(tab_results, 'tabs_1109.rds')
+write_rds(tab_results, 'tabs_1114.rds')
 warnings()
 
-## -------- pathways enrichment --------------------
-for (j in seq_along(tab_results)){
-  tab <- tab_results[[j]]
-  # spia_resf[[j]] <- future({spia_filter(tab, j)})
-  fc_resf[[j]] <- future({fc_filter(tab)})
-}
-
-
-fc_res <- lapply(fc_resf, FUN = value)
-write_rds(fc_res, 'fc_res.rds')
-print('FC finished!!')
-
-# see pathways
-
-fc_overlap  <- unlist(lapply(fc_res, function(t) t$Description)) %>% table %>% sort()
-spia_overlap <- unlist(lapply(spia_res, function(t) t$Name[t$pGFdr < 0.1])) %>% table %>% sort()
-
-
-# save SPIA
-# write_rds(spia_res, 'spia_tables.rds')
-
-# for (m in seq_along(spia_res)){
-#   spia_tab <- spia_res[[m]]
-#   sig.pathids_1 <- spia_tab$Name[spia_tab$pGFdr < 0.1 | spia_tab$pGFWER < 0.1]
-#   sig.pathids_2 <- spia_tab$Name[1]
-#   sig.pathids <- unique(c(sig.pathids_2, sig.pathids_1)) # at least one pathway will remain
-#   spia_ids[[m]] <- sig.pathids
+# ## -------- pathways enrichment --------------------
+# for (j in seq_along(tab_results)){
+#   tab <- tab_results[[j]]
+#   # spia_resf[[j]] <- future({spia_filter(tab, j)})
+#   fc_resf[[j]] <- future({fc_filter(tab)})
 # }
+# 
+# 
+# fc_res <- lapply(fc_resf, FUN = value)
+# write_rds(fc_res, 'fc_res.rds')
+# print('FC finished!!')
+# 
+# # see pathways
+# 
+# fc_overlap  <- unlist(lapply(fc_res, function(t) t$Description)) %>% table %>% sort()
+# spia_overlap <- unlist(lapply(spia_res, function(t) t$Name[t$pGFdr < 0.1])) %>% table %>% sort()
+# 
+# 
+# # save SPIA
+# # write_rds(spia_res, 'spia_tables.rds')
+# 
+# # for (m in seq_along(spia_res)){
+# #   spia_tab <- spia_res[[m]]
+# #   sig.pathids_1 <- spia_tab$Name[spia_tab$pGFdr < 0.1 | spia_tab$pGFWER < 0.1]
+# #   sig.pathids_2 <- spia_tab$Name[1]
+# #   sig.pathids <- unique(c(sig.pathids_2, sig.pathids_1)) # at least one pathway will remain
+# #   spia_ids[[m]] <- sig.pathids
+# # }
+# 
+# bets <- list()
+# 
+# for (k in seq_along(fc_res)){
+#   fc_tab <- fc_res[[k]]
+#   tab <- tab_results[[k]]
+#   bets[[k]] <- make_wl(fc_tab, a = 5)
+#   #path_graph_ids[[k]] <- wl$to
+# }
+# # save whitelist
+# write_rds(path_graph_ids, 'wl_tonodes.rds')
+# wls <- lapply(path_graph_ids, function(d){
+#   data.frame(from = 'label', to = d)
+# })
+# print('whitelist made!')
+# write_rds(true_fts, 'true_fts.rds')
+# print('fts made')
 
-bets <- list()
 
-for (k in seq_along(fc_res)){
-  fc_tab <- fc_res[[k]]
-  tab <- tab_results[[k]]
-  bets[[k]] <- make_wl(fc_tab, a = 5)
-  #path_graph_ids[[k]] <- wl$to
-}
-# save whitelist
-write_rds(path_graph_ids, 'wl_tonodes.rds')
-wls <- lapply(path_graph_ids, function(d){
-  data.frame(from = 'label', to = d)
-})
-print('whitelist made!')
-write_rds(true_fts, 'true_fts.rds')
-print('fts made')
+# input prior knowledge from STRING database
+prepare_string(tab_results)
+string_gs <- getg_string()
 
 
 ## ------ make tabu -------------
