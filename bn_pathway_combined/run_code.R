@@ -14,7 +14,8 @@ library(limma)
 library(hgu133plus2.db)
 library(annotate)
 library(ROCR)
-library("future")
+library(future)
+library(ReactomePA)
 plan(multicore)
 look <- function(m) m[1:5, 1:5]
 # get functions
@@ -22,12 +23,15 @@ source('assist_code.R')
 # load data set
 data.matrix <- read_rds('raw1106/data_matrix.rds')
 ph <- read_rds('raw1106/phenodata.rds')
+dir_name <- 'gsea_paths'
 humanReactome <- read_rds('humanReactome.rds')
-
+pdict <- make_path_dict()
 
 # make discrete data matrix for all genes
 ds_ft <- make_discre(data.matrix, 0.6)
 
+# create the container for output in this run
+dir.create(dir_n)
 
 
 # # create the identical partition of sample
@@ -50,72 +54,84 @@ tabugsf <- list()
 
 predicts <- list()
 labels <- list()
-#spia_resf <- list()
+spia_resf <- list()
+fc_resf <- list()
 true_fts <- list()
 
 
 
-## ---- load resumed files -----
-tids <- read_rds('tids_uniform.rds')
-spia_res <- read_rds('spia_tables.rds')
-tab_results <- read_rds('tabs_1109.rds')
+# ## ---- load resumed files -----
+# tids <- read_rds('tids_uniform.rds')
+# spia_res <- read_rds('spia_tables.rds')
+# tab_results <- read_rds('tabs_1109.rds')
 ## the real exciting cycle begins = =
 
-# # ---------- DE --------------------
-# for (i in seq_along(tids)){
-#   
-#   # define train and test
-#   tid <- tids[[i]]
-#   train <- data.matrix[,tid]
-#   test <- data.matrix[, -tid]
-#   
-#   # differential expression
-#   train_label <- as.factor(ph$disease_state[tid])
-#   tab <- DE_pipe(train, train_label)
-#   
-#   # give labels to DE genes
-#   tab <- anno(t = tab)
-#   tab_results[[i]] <- tab
-#   print('tab result saved')
-#   print(tab)
-#   
-#   # modify label
-#   train_labels[[i]] <- ifelse(train_label == 'AMI', 1, 0 )
-#   test_labels[[i]] <- ifelse(as.factor(ph$disease_state[-tid]) == 'AMI', 1, 0)
-# }
-# 
-# # save: tabs
-# write_rds(tab_results, 'tabs_1109.rds')
-# warnings()
-# ## -------- graph pathways --------------------
-# for (j in seq_along(tab_results)){
-#   # spia two-way plot + get pathids
-#   tab <- tab_results[[j]]
-#   spia_resf[[j]] <- future({spia_filter(tab, j)})
-# }
-# spia_res <- lapply(spia_resf, FUN = value)
-# print('finished spias!!')
-# 
-# # save SPIA
-# write_rds(spia_res, 'spia_tables.rds')
+# ---------- DE --------------------
+for (i in seq_along(tids)){
 
-for (m in seq_along(spia_res)){
-  spia_tab <- spia_res[[m]]
-  sig.pathids_1 <- spia_tab$Name[spia_tab$pGFdr < 0.1 | spia_tab$pGFWER < 0.1]
-  sig.pathids_2 <- spia_tab$Name[1]
-  sig.pathids <- unique(c(sig.pathids_2, sig.pathids_1)) # at least one pathway will remain
-  spia_ids[[m]] <- sig.pathids
-}
+  # define train and test
+  tid <- tids[[i]]
+  train <- data.matrix[,tid]
+  test <- data.matrix[, -tid]
 
-for (k in seq_along(spia_ids)){
-  sig.pathids <- spia_ids[[k]]
-  tab <- tab_results[[k]]
-  # make whitelist by pathids
-  wl <- make_wl(sig.pathids)
-  path_graph_ids[[k]] <- wl$to
+  # differential expression
+  train_label <- as.factor(ph$disease_state[tid])
+  tab <- DE_pipe(train, train_label)
+
+  # give labels to DE genes
+  tab <- anno(t = tab)
+  tab_results[[i]] <- tab
+  print('tab result saved')
+  print(tab)
+
+  # modify label
+  train_labels[[i]] <- ifelse(train_label == 'AMI', 1, 0 )
+  test_labels[[i]] <- ifelse(as.factor(ph$disease_state[-tid]) == 'AMI', 1, 0)
   
   # real feature table for tabu search (train + test)
-  true_fts[[k]] <- shrink_features(ori_dm = ds_ft, fea_names = tab$SYMBOL)
+  true_fts[[i]] <- shrink_features(ori_dm = ds_ft, fea_names = tab$SYMBOL)
+}
+
+# save: tabs
+write_rds(tab_results, 'tabs_1109.rds')
+warnings()
+
+## -------- pathways enrichment --------------------
+for (j in seq_along(tab_results)){
+  tab <- tab_results[[j]]
+  # spia_resf[[j]] <- future({spia_filter(tab, j)})
+  fc_resf[[j]] <- future({fc_filter(tab)})
+}
+
+
+fc_res <- lapply(fc_resf, FUN = value)
+write_rds(fc_res, 'fc_res.rds')
+print('FC finished!!')
+
+# see pathways
+
+fc_overlap  <- unlist(lapply(fc_res, function(t) t$Description)) %>% table %>% sort()
+spia_overlap <- unlist(lapply(spia_res, function(t) t$Name[t$pGFdr < 0.1])) %>% table %>% sort()
+
+
+# save SPIA
+# write_rds(spia_res, 'spia_tables.rds')
+
+# for (m in seq_along(spia_res)){
+#   spia_tab <- spia_res[[m]]
+#   sig.pathids_1 <- spia_tab$Name[spia_tab$pGFdr < 0.1 | spia_tab$pGFWER < 0.1]
+#   sig.pathids_2 <- spia_tab$Name[1]
+#   sig.pathids <- unique(c(sig.pathids_2, sig.pathids_1)) # at least one pathway will remain
+#   spia_ids[[m]] <- sig.pathids
+# }
+
+bets <- list()
+
+for (k in seq_along(fc_res)){
+  fc_tab <- fc_res[[k]]
+  tab <- tab_results[[k]]
+  bets[[k]] <- make_wl(fc_tab, a = 5)
+  #path_graph_ids[[k]] <- wl$to
 }
 # save whitelist
 write_rds(path_graph_ids, 'wl_tonodes.rds')
@@ -144,6 +160,8 @@ paste0('tabu finished at ', Sys.time())
 
 tabugs <- read_rds('tabugs.rds')
 true_fts <- read_rds('true_fts.rds')
+
+
 ## ------- final assess -----------
 for (m in seq_along(tabugs)){
   tabug <- tabugs[[m]]
