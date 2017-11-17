@@ -1,0 +1,451 @@
+---
+title: "A Bayeisan Network Classifier for Acute Myocardial Infarction Microarray"
+author: "Qing Zhang, Haipeng Wang"
+date: "November 16, 2017"
+output: 
+  html_document: 
+    theme: united
+    highlight: tango
+    toc: true
+    toc_float: true
+    number_sections: true
+bibliography: ami_pp.bib
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, cache = TRUE, message = FALSE )
+library(readr)
+library(dplyr)
+library(rmarkdown)
+#pandoc_available()
+data.matrix <- read_rds('raw1106/data_matrix.rds')
+ph <- read_rds('raw1106/phenodata.rds')
+```
+
+# Abstract
+
+Polygenic nature of Myocardial infarction poses challenge for clinical diagnosis and prognosis. Here we used whole-genome gene expression micro-array data of 52 samples (data available at [GSE48060](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE48060)) to build a Tree-augmented naive Bayesian network classifier that achieve AUC of 0.852. Several attempts were made to integrate biological knowledge-base (e.g. pathways and interactome) into the feature selection process, which did not improve the prediction performance but added to intrepretability of the model.
+
+
+
+# Introduction
+
+Coronary disease remains the leading cause of death in adults over 35 years of age in United States[@ami-background]. The assessment of risk factors - including hypertension, diabetes and smoking - and the search for molecular markers have gained some success, but they are limited by the existing knowledge. Microarray technology, a robust high-throughput method to screen whole genome expression profile[@ori-refer2], enables search for more sensitive disease marker. 
+
+It is assumed that transcriptional speculation of peripheral blood might be a prospective cohort for identify key regulators associated with first-time AMI[@ori-ami-paper]. To devise a pipeline where we can possibly predict the probability of AMI occurrence from non-invasive test (e.g. peripheral blood sample) would be ideal. However microarray data is high dimensional, characterized by many variables and few observations, along with low signal-to-noise ratio, is not ideal for standard machine learning approach[@breast-cancer].
+
+Bayesian network is a decision support model that is composed of a directed acylic graph (DAG) and conditional probability tables[@bnlearn-book]. It allows to model a multidimensional probability in a sparse way by searching Independence relations in the data. The second step of the model building consists of estimating the parameters of local probability models corresponding with the dependency structure. To overcome the problem of high signal-to-noise ratio and high possibility of over-fit due to limited sample size[@breast-cancer], we are intended to integrate biology pathway information with the structure learning process, to enhance the bio-intrepretability and model generalizability.
+
+
+
+
+# Material, Method and Result
+
+
+## Data availability
+
+Data is downloaded from [GSE48060](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE48060). There were 52 samples (31 AMI and 21 controls). AMI peripheral blood sample were collected within 48h of AMI while the control samples are collected following the recruitment to the study. Here is a brief summary of information related to **GSE48060**.
+
+```{r printdataref, echo=FALSE}
+basic_info <- read_rds('tab_pics/gds5074_platform.rds')
+pander::pander(basic_info, caption="\\label{tab:tab1}Platform information about raw data GSE48060")
+```
+
+## Statistical analysis of microarray data
+
+A standard pipeline of quality assessment(QA) and quality control(QC) has been carried out, including MA-plot, assessment of raw microarray images, relative log expression. The expression set is normalized using `GCRMA` package[@gcrma-package]. Gene filtering[@genefilter-package] was performed subsequently to remove duplicated genes and genes that have low variance or consistent low signal. 
+
+### Clustering
+
+Clustering is a unsupervised method to see if the dataset is 'learnable'. Here we employed PCA and tSNE for dimension reduction and the two sets shows some mild divergence. This indicates the fold change between the two sets of sample may not be very significant.
+
+```{r dr_cluster, fig.cap="Figure.1 Dimmension reduction by PCA"}
+library(Rtsne)
+library(magrittr)
+
+
+make.pca <- function(dm = data.martix){
+  data.PC = prcomp(t(data.matrix),scale.=FALSE)
+  PCdf <- data.PC$x %>%  as.data.frame() 
+  PCdf
+}
+
+PCdf <- make.pca()
+color=c(rep('red', 31), rep('green', 21))
+pairs(~PC1 + PC2 + PC3,data = PCdf, 
+      main="PCA", col = color) 
+
+```
+
+```{r tsne, fig.cap="Figure.2 Dimmenssion reduction by tSNE"}
+
+labels <- c(rep('AMI', 31), rep('control', 21))
+set.seed(3)
+make.tsne <- function(df = t(data.matrix), lb = labels){
+  data.tsne <- Rtsne(df, dims = 2, perplexity=7, verbose=FALSE, max_iter = 500)
+  tsne_df <- as.data.frame(data.tsne$Y)
+  rownames(tsne_df) <- ph$sample_name
+  tsne_df
+}
+
+
+tsne.plot <- function(lb = labels, dt = tsne_df){
+  plot(dt, t='n', main="tsne")
+  text(dt, labels=lb, col=color, cex = 0.8)
+}
+
+tsne_df <- make.tsne()
+tsne.plot()
+
+```
+
+
+
+```{r showdim-reducts, fig.cap="Figure.3 Clustering by PCA"}
+library(dendextend)
+fseq <- colnames(data.matrix)
+
+#mod.df <- function(raw_df, fs = fseq, phdict = ph){
+#  rownames(raw_df) <- phdict$sample_name[match(fs, phdict$file_name)]
+#  raw_df
+#}
+
+hclust_pipe <- function(df, method){
+  distance <- dist(df, method = 'maximum')
+  dendo <- hclust(distance) %>% as.dendrogram()
+  lb <- labels(dendo)
+  #browser()
+  col <- ifelse(ph$disease_state[match(lb, ph$sample_name)]=='AMI', 'red', 'green')
+  dendo %>% set('labels', lb) %>% 
+  set("labels_col", col) %>% 
+  set("labels_cex", 1) %>% 
+  plot(main = paste("hierarchical clustering by",method) )
+  
+}
+
+#PCdf <- mod.df(PCdf)
+#tsne_df <- mod.df(tsne_df)
+hclust_pipe(PCdf,method = 'PCA')
+```
+
+
+```{r showdimreduct2 , fig.cap="Figure.4 Clustering by tSNE"}
+hclust_pipe(tsne_df, method = 't-SNE')
+```
+
+### Differential expression analysis
+
+Differential analysis was performed to determine all the genes with fold change more than 1.2 before FDR control. Here shows the top 10 genes with the highest `logFC` estimated. [Power analysis](http://sph.umd.edu/department/epib/power-calculation-completely-randomized-treatment-control-designs) has demonstrated that under the current pipeline we are able to identify more than 98% of differential expressed genes with logFC > 0.26 (equivalently, fold change more than 1.2).
+
+```{r showDE, echo=FALSE}
+tab <- read_rds('tab_pics/de_genes_tab.rds')
+knitr::kable(head(tab), caption="\\label{tab:Table.1}Table.1 Differentially expressed genes")
+```
+
+```{r heat, echo=FALSE, fig.cap="Figure.5 A Bicluster heatmap for up- and down-regulated genes between two groups"}
+library(d3heatmap)
+library(preprocessCore)
+
+normf <- function(m = data.matrix, de = tab){
+  tab0 <- de[ order(-tab$logFC), ] 
+  tab0 <- tab0[tab0$P.Value < 0.0005 & abs(tab0$logFC) > 0.6,]
+  de_pids <- tab0$PROBEID
+  dem <- m[de_pids,]
+  colnames_dem <- ph$sample_name[match(colnames(dem), ph$file_name)]
+  rownames_dem <- de$ENTREZID[match(rownames(dem), de$PROBEID)]
+  # normalize in 2D
+  dem <- t(normalize.quantiles(t(dem)))
+  dem <- normalize.quantiles(dem)
+  dimnames(dem) <- list(rownames_dem, colnames_dem)
+  dem
+}
+
+
+dem <- normf()
+d3heatmap(dem, scale = "row", dendrogram = "none" )
+```
+
+### Enrichment analysis
+
+Here Gene ontology and pathway enrichment are performed. Despite ORA-based method is widely adopted by practitioners when conducting GO enrichment tests, FC and topology-based methods are two additional algorithm for pathway enrichment. Here we use `gprofiler` [@gprofiler-package] as ORA-based query and identified the following enriched ontologies terms -
+
+```{r showGO, echo=FALSE}
+library(gProfileR)
+gp <- gprofiler(query = tab$SYMBOL) %>% tbl_df()
+g <- gp %>% dplyr::select(term.id, p.value, term.name) %>% filter(p.value < 0.000001)
+knitr::kable(g, caption="\\label{tab:Table.2}Table.2 GO ontologies enrichment analysis by gprofiler API")
+
+```
+
+Pathway enrichment (based on [Reactome](reactome.org)) are analysed by both FC[@ReactomePA-package] and SPIA[@spia-package]. But the result somehow divergent. Here is the result obtained from ORA methods.
+
+```{r showpaths, echo=FALSE}
+ptw <- read_csv('reactome_result.csv')
+ptw1 <- ptw %>% dplyr::select(`Pathway identifier`, `Pathway name`, `Entities pValue`, `Entities FDR`) %>% dplyr::filter(`Entities pValue` < 0.05 & `Entities FDR` < 0.5)
+
+knitr::kable(ptw1, caption="\\label{tab:Table.3}Table.3 Pathway enrichment")
+```
+
+
+
+## Bayesian Network Classifier
+
+### Preprocessing
+
+For each training set, we removed genes that did not met the following criteria: at least 1.2 fold increase and a P-value of less than 0.05. The genes were discretlized into three categories : baseline expression(0), up-regulation(1) and down-regulation(-1) according to the Z-score for each gene.
+
+### Model building
+
+First we noted that a single structure learning with about 300 discretilized features yields unstable network structure in which the 'label' node is often isolated from other nodes. Therefore bootstrap is a must for learning convergent stable network structure. Moreover we note that Tree-augment Bayesian network (TAN) gives better predictive performance than unrestricted Bayesian network structure[@bnlearn-book]. We also noticed that the Bayesian network package `bnlearn`[@bnlearn-package] provides `tree.bayes` utilities but it cannot do feature selection by measuring dependency between **label** and other features. Therefore we tried to intregrate TAN with unrestricted Bayesian network, by:
+
+- For each bootstrap, we use a pre-formed TAN as starting structure for further learning.
+- Bootstrap averaged network can be used as part of feature selection pipeline (as to resolve the dependence sturcture), the final model can be built by TAN with remaing Markov blanket of **label** node.
+
+First as the most classical method, we did bootstrap with `tabu`(while starting with TAN structure) and then build model directly by model averaging. Bayesian likelihood weighting is used to predict the probability of **label** node given the Markov blanket of the **label** node. This intuitive method is denoted as `tabu-boot`.
+
+Note that this method gives unrestricted Bayesian network without any intervention. The other two method, denoted by `tabu-TAN` and `pathway-TAN` add somewhat complexity. They follow a consensus workflow as illustrated below.
+
+
+```r
+# standard microarray pipeline
+rawdata <- expressionSet(affymatrix)
+
+# discretilize raw data by zscore with cutoff [-0.6, 0.6]
+alldata <- discretilize(rawdata, sigma = 0.6)
+
+# define train and test based on 10 fold cross validation
+[train, test] <- creatDataPartitions(alldata, method = '10-fold cv')
+
+for (each fold){
+    # build design matrix and do differential analysis
+    deGenes <- differentialAnalysis(train)
+    
+    # the only difference among methods is feature selection pipeline, 
+    # which will be discussed later
+    **sel.genes <- featureSelection(deGenes)**
+    
+    # build a TAN from selected featrues, 
+    # 'bayes' was used instead of 'mle' to avoid overfit
+    tanNet <- bn.fit(tree.bayes(train[,sel.genes], 'label'), method = 'bayes')
+    
+    # assess model performance  on test-set
+    prob <- predict(tanNet, test, prob = TRUE)
+    perf[[fold]] <- assessPerformance(prob,test$label, 
+                    by = c('auc', 'roc', 'prc'))
+}
+```
+Raw microarray data was processed to normalize background noise and GC content. The resulting expression Set is then discretalized and partitioned[@caret-package] into 10 folds. For each fold, differential analysis was carried out. Feature selection was applied to reduce those deferentially expressed genes into a minimal set (about 30 features) and a TAN was built to predict disease state with those remaining features.
+
+Note that the following pipelines only differ in feature selection. `tabu-TAN` uses only the statistical measures for feature selection. It relays on bootstrap method, starting from a TAN to give each possible arc an strength that measures the frequency of appearance. An ad-hoc threshold of 0.7 was selected to remove non-significant arcs. The resulting network based on model-averaging gives the Markov blanket for the **label** node, which is then used to build TAN as a classifier.
+
+```r
+# pseudocode for **tabu-TAN**
+
+featureSelection <- function(){
+    # a set of differentially expressed genes are used as the first filter
+    trainFeatures <- train[,deGenes]
+    
+    # build a TAN-like start network for further learning
+    startTree <- tree.bayes(trainFeatures, 'label')
+    
+    # tabu search is applied, 1000 bootstrap is used and 
+    # for each one tabu will do additional 100 search to avoid local optima
+    bs <- bootstrap(trainFeatures, method = 'tabu', 
+              R = 1000, restart = 100, start = startTree)
+              
+    # threshold is selected by ad-hoc
+    bn <- average.network(bs, threshold = 0.7)
+    
+    # find the markov blanket for 'label node
+    return(markovBlanket(bn, 'label' ))
+}
+
+```
+
+In an alternative `pathway-TAN` method, pathway information is integrated. The differential expressed genes were first used to enrich pathways - by either ORA, FC or topology-based method(e.g. SPIA). The enriched pathways from `reactome` database was merged to a single network. First we regarded the intersection between differential expressed genes and those present in the merged network as **interested**. We calculated the pairwise distance between those **interested** genes to produce a distance matrix, if the two nodes can be reached within 10 steps, we will presume such connection is likely (denoted as `1`).Therefore we are able to derive a another graph, whose nodes are those **interested** genes. We choose the genes that has betweenness more than 0 to be the white-list for bootstrap. The following pipeline is similar.
+
+
+```r
+# pseudocode for **pathway-TAN**
+
+featureSelection <- function(){
+    
+    # analyze pathway from differentially expressed genes
+    pathIDs <- pathwayEnrichment(deGenes, 
+               by = c('GSEA', 'ORA','SPIA'), database = 'reactome')
+    
+    # merge all identified pathways into one
+    pathGraph <- mergePathGraph(pathIDs)
+    
+    # calculate pairwise shortest-path matrix for nodes that has been 
+    # shown to differentially expressed between AMI and control sample.
+    distanceMatrix <- 
+        distance(pathGraph)[nodes %in% deGenes, nodes %in% deGenes]
+        
+    # we define a new adjacency matrix: assign '1' if the shortest path
+    # between two proved differentially expressed genes is within 10 steps, 
+    # and '0' otherwise.
+    subNet <- ifelse(distanceMatrix > 10, 1, 0)
+    
+    # calculate betweenness of subNet, choose the nodes whose betweeness > 0
+    nodes <- selectNodes(subNet, betweeness > 0 )
+    # These nodes are defined to be the whitelist for bootstrap
+    
+    
+    ## ----- the rest is similar to tabu-TAN method ------##
+    ## ------------except a whitelist is added ---------- ##
+    
+    
+    # a set of differentially expressed genes are used as the first filter
+    trainFeatures <- train[,deGenes]
+    
+    # build a TAN-like start network for further learning
+    startTree <- tree.bayes(trainFeatures, 'label')
+    
+    # tabu search is applied, 1000 bootstrap is used and 
+    # for each one tabu will do additional 100 search to avoid local optima
+    bs <- bootstrap(trainFeatures, method = 'tabu', whitelist = nodes,
+              R = 1000, restart = 100, start = startTree)
+              
+    # threshold is selected by ad-hoc
+    bn <- average.network(bs, threshold = 0.7)
+    
+    # find the markov blanket for 'label node
+    return(markovBlanket(bn, 'label' ))
+    
+}
+```
+## Model assessment
+
+We tested the following parameters for each models - 
+- Predictive performance: ROC, AUC, PRC
+- Stability: convergence of features
+- Interpretability: Pathway enrichment levels of selected features.
+
+### Predictive performance
+
+Tabu bootstrap gives fair performance (AUC = 0.824 for 10 fold cross validation). The introduction of TAN can moderately enhance its performance (AUC = 0.852). However the introduction of pathway knowledge might have confused the model - AUC has deceased to 0.78 while standard deviation has become significantly larger. This result suggests that inclusion of exogenous knowledge may deteriorate prediction performance - the formulation of **whitelist** is not well-supported by structure learning result, which seems deviate structure learning toward an expert system.
+
+<br>
+
+
+
+
+
+```{r, fig.cap="Figure.6 BN built by tabu bootstrap and model averaging", out.width='80%'}
+knitr::include_graphics('noTAN/roc_r1.png')
+```
+
+
+```{r, fig.cap="Figure.7 BN built by tabu-TAN", out.width='80%'}
+knitr::include_graphics('pure_tabu/roc_.png')
+```
+
+
+```{r, fig.cap="Figure.8 BN built by pathway-TAN", out.width='80%'}
+knitr::include_graphics('pure_tabu/roc_r1.png')
+```
+
+
+
+### Stability
+
+Here we test if the selected features are convergent among each fold. The solid line represents the tabu-TAN method, it has relatively limited feature set for each fold (15 features on average) and more than 30% of the features appear in at least 6 folds. The pathway-TAN method (shown as the dots) gives broader choice for selected features. On average 20 features are selected but many features appear only once.
+
+```{r, fig.cap="Figure.9 Feature Convergence byt two feature selection methods", out.width='80%'}
+knitr::include_graphics('covfs.png')
+```
+
+
+
+
+### Bio-intrepretability
+
+Here we used `reactome` again to see if relevant pathways are enriched. Figure.4 and Figure.5 show that two feature selection methods has divergence in the domain of pathway where selected features are over-represented. The integration biology pathway information shows more focused enrichment at immune system, signaling and homeostasis, whose dysregulation should be more related with AMI etiology. On the contrast, pure statistic-driven feature selection gives more functional diffused features. Furthermore pathways enriched by integrated methods gives significantly lower FDR.
+
+
+```{r, fig.cap="Figure.10 Pathway enriched by simple bootstrap and tabu-TAN", out.width='100%'}
+knitr::include_graphics('ppt_pics/react0.png')
+path0 <- read_csv('ppt_pics/path2.csv')
+path0 <- path0 %>% dplyr::select(`Pathway name`, `Entities FDR`, `Entities pValue`) %>% filter(`Entities FDR` < 0.5 & `Entities pValue` < 0.01)
+knitr::kable(path0, caption = "Table.4 Pathways enriched with tabu-TAN")
+```
+
+
+
+```{r, fig.cap="![Figure.11 Pathway enriched by pathway-based knowledge", out.width='100%'}
+knitr::include_graphics('ppt_pics/react1.png')
+path <- read_csv('ppt_pics/path3.csv')
+path <- path %>% dplyr::select(`Pathway name`, `Entities FDR`, `Entities pValue`) %>% filter(`Entities FDR` < 0.5 & `Entities pValue` < 0.01)
+knitr::kable(path, caption = "Table.5 Pathways enriched with pathway-TAN")
+```
+
+
+
+
+
+
+## Bonus: **Play** with the net!
+
+A Bayesian Network by `tabu-boot` will be normally similar to this. 
+```{r netviz, fig.cap="Figure.9 Static BN network, red nodes are the Markov blanket of 'label' and the 'label' node itself", out.width=500}
+knitr::include_graphics('noTAN/network8.png')
+```
+
+Here is an interactive version of the same graph. You may zoom, drag the graph. Tooltips for each nodes gives the log fold change for this gene between AMI and control samples.
+
+```{r}
+library(igraph)
+library(bnlearn)
+library(visNetwork)
+g <- read_rds('sample_bn.rds')
+tab_results <- read_rds('tabs_1114.rds')
+arcs(g) -> el
+
+ig <- graph.data.frame(el)
+mb <- mb(g, 'label')
+bg_cols <- ifelse(as_ids(V(ig)) %in% mb, 'orange', 'grey')
+bg_cols[which(as_ids(V(ig)) == 'label')] <- 'red'
+
+
+tab <- tab_results[[8]]
+nodes <- data.frame(id = seq_along(as_ids(V(ig))), 
+                    label = as_ids(V(ig)),                                 # add labels on nodes
+                    group = ifelse(as_ids(V(ig)) %in% mb, 'mb', 'non-mb'),                                     # add groups on nodes 
+                    #value = 1:10,                                                # size adding value
+                    shape = ifelse(as_ids(V(ig)) %in% mb, 'box', 'circle'),
+                      
+            # control shape of nodes
+                    title = 2^(tab$logFC[match(as_ids(V(ig)), tab$SYMBOL)]),         # tooltip (html or character)
+                    color = bg_cols)                  # shadow
+
+
+
+nel <- as_edgelist(ig)
+fel <- match(nel[,1], as_ids(V(ig)))
+tel <- match(nel[,2], as_ids(V(ig)))
+edges <- data.frame(from = fel, to = tel,
+                    #label = paste("Edge", 1:8),                                 # add labels on edges                                     # length
+                    arrows = "to",            # arrows
+                    dashes = (nel == '122' || fel == '122'),                                    # dashes
+                    #title = paste("Edge", 1:8),                                 # tooltip (html or character)
+                    #smooth = c(FALSE, TRUE),                                    # smooth
+                    shadow = (nel == '122' || fel == '122'))                       # shadow
+
+network <- visNetwork(nodes, edges)
+```
+
+```{r}
+htmlwidgets:::knit_print.htmlwidget(network)
+```
+
+# Conclusion
+
+The work presents a trial to integrate biological pathway data into feature learning process. The marriage between pathway network and causal Bayesian network might give more interpretable feature subsets, which may lead to better generalizablity. However it is also noted that there must be some more elegant mathematics formulation behind, which might involves a pathway-related loss function or regularization techniques. 
+
+
+# Acknowledgement
+
+Many thanks to Dr.Gil Alterovitz, Dr.Lin and Haipeng. It feels great to get a taste of machine learning with R. I will continue improve my knowledge for this area, to see if there can be some neat mathematics way to make a model with high intepretability while keeping its accuracy.
+
+
+# Reference
