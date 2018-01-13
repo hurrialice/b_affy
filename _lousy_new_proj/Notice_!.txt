@@ -1,0 +1,2 @@
+每组CEL数据解压在"data/"下的对应目录里
+例如data/data_fmerc/中存放FMERC High Fatigue和FMERC Low Fatigue中的所有.CEL文件

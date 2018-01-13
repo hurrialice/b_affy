@@ -1,0 +1,292 @@
+---
+title: "Phase 2"
+author: "Feng"
+date: "11/21/2017"
+output: 
+  html_document: 
+    theme: united
+    highlight: tango
+    toc: true
+    toc_float: true
+    number_sections: true
+---
+default variable
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(eval = TRUE, warning = FALSE, include = TRUE, tidy = TRUE, message = FALSE, cache = TRUE)
+setwd('F:/Project_group/Git_Project/FHIR/CEL_FILE')
+
+path <- "data/"
+path.fmerc <- "data_fmerc/"
+path.tbi <- "data_tbi/"
+path.xrt <- "data_xrt/"
+
+file.data <- "data_matrix.rds"
+file.fmerc <- "FMERC.txt"
+file.tbi <- "TBI.txt"
+file.xrt <- "XRT.txt"
+
+csv_sep <- "\t"
+
+```
+
+<br>
+
+# choosing treating data
+
+```{r data}
+data_type <- "fmerc"
+
+if(data_type == "fmerc"){
+    cel_path <-  paste(path,path.fmerc,sep="")
+    cel_files <- file.fmerc
+    data_matrix <- paste(cel_path,file.data,sep="")
+    type_1 <- 24
+    type_2 <- 7
+    name_1 <- 'High'
+    name_2 <- 'Low'
+    dis_label_1 <- 'FMERC_High'
+    dis_label_2 <- 'FMERC_Low'
+    pvalue <- 2.423544e-37
+    logfc <- 0.6
+    node_label <- 'label'
+}else if(data_type == "tbi"){
+    cel_path <-  paste(path,path.tbi,sep="")
+    cel_files <- file.tbi    
+    data_matrix <- paste(cel_path,file.data,sep="")
+    type_1 <- 20
+    type_2 <- 18
+    name_1 <- '0_10'
+    name_2 <- '65_80'
+    dis_label_1 <- 'TBI_0_10' 
+    dis_label_2 <- 'TBI_65_80' 
+    pvalue <- 0.01
+    logfc <- 10.92
+    node_label <- 'label'
+}else if(data_type == "xrt"){
+    cel_path <-  paste(path,path.xrt,sep="")
+    cel_files <- file.xrt
+    data_matrix <- paste(cel_path,file.data,sep="")
+    type_1 <- 9
+    type_2 <- 12
+    name_1 <- 'Acute'
+    name_2 <- 'unAcute'
+    dis_label_1 <- 'XRT_Acute'
+    dis_label_2 <- 'XRT_unAcute'
+    pvalue <- 7.308559e-32
+    logfc <- 0.6
+    node_label <- 'label'
+}else{
+    cel_path <-  paste(path,path.fmerc,sep="")
+    cel_files <- file.fmerc
+    data_matrix <- paste(cel_path,file.data,sep="")
+    type_1 <- 24
+    type_2 <- 7
+    name_1 <- 'High'
+    name_2 <- 'Low'
+    dis_label_1 <- 'FMERC_High'
+    dis_label_2 <- 'FMERC_Low'
+    pvalue <- 2.423544e-37
+    logfc <- 0.6
+    node_label <- 'label'
+}
+
+
+```
+<br>
+
+# data load and gcrma normalize
+
+```{r gcrma}
+library(dplyr)
+library(GEOquery)
+library(simpleaffy)
+library(genefilter)
+library(magrittr)
+
+# FMERC should be match with data files
+ph <- read.csv(paste(cel_path,cel_files,sep=""),sep=csv_sep) 
+celfiles <- read.affy(covdesc=cel_files, path=cel_path)
+
+gcnorm_filter <- function(cf){
+  cf.gcrma <- gcrma(cf)
+  cf.filtered <- nsFilter(cf.gcrma)
+  print(cf.filtered$filter.log)
+  return(cf.filtered)
+}
+
+cf.gf <- gcnorm_filter(cf = celfiles)
+data.matrix <- cf.gf$eset %>% exprs
+# saveRDS(data.matrix, data_matrix)
+```
+
+<br>
+
+
+# dim reducing PCA and T-SNE
+
+
+```{r dim_reducing}
+library(Rtsne)
+library(magrittr)
+
+# ph <- read.csv(paste(cel_path,cel_files,sep=""),sep=csv_sep)
+# data.matrix <- readRDS(data_matrix)
+
+data.PC = prcomp(t(data.matrix),scale.=FALSE)
+# summary(data.PC)
+
+make.pca <- function(dm = data.martix){
+  data.PC = prcomp(t(data.matrix),scale.=FALSE)
+  data.PC = summary(data.PC)
+  PCdf <- data.PC$x %>%  as.data.frame() 
+  PCdf
+}
+
+PCdf <- make.pca()
+# sPCdf <- summary(PCdf)
+color=c(rep('red', type_1), rep('green', type_2))
+pairs(~PC1 + PC2 + PC3 + PC4 + PC5 + PC6,data = PCdf, 
+      main="PCA", col = color) 
+
+
+labels <- c(rep(name_1, type_1), rep(name_2, type_2))
+set.seed(3)
+make.tsne <- function(df = t(data.matrix), lb = labels){
+  data.tsne <- Rtsne(df, dims = 2, perplexity=6, verbose=TRUE, max_iter = 500, check_duplicates = FALSE)
+  tsne_df <- as.data.frame(data.tsne$Y)
+  tsne_df
+}
+
+tsne.plot <- function(lb = labels, dt = tsne_df){
+  plot(dt, t='n', main="tsne")
+  text(dt, labels=lb, col=color, cex = 0.8)
+}
+
+tsne_df <- make.tsne()
+tsne.plot()
+
+```
+
+# hierarchical clustering for PCA and T-SNE
+
+```{r hclust}
+library(dendextend)
+fseq <- colnames(data.matrix)
+
+mod.df <- function(raw_df, fs = fseq, phdict = ph){
+  rownames(raw_df) <- phdict$sample_name[match(fs, phdict$file_name)]
+  raw_df
+}
+
+hclust_pipe <- function(df, method){
+  distance <- dist(df, method = 'maximum')
+  dendo <- hclust(distance) %>% as.dendrogram()
+  lb <- labels(dendo)
+  col <- ifelse(ph$disease_state[match(lb, ph$sample_name)]==dis_label_2, 'red', 'green')
+  dendo %>% set('labels', lb) %>% 
+  set("labels_col", col) %>% 
+  set("labels_cex", 1) %>% 
+  plot(main = paste("hierarchical clustering by",method) )
+}
+
+PCdf <- mod.df(PCdf)
+tsne_df <- mod.df(tsne_df)
+hclust_pipe(PCdf,method = 'PCA')
+hclust_pipe(tsne_df, method = 't-SNE')
+```
+
+## future work for this section: 
+
+<br>
+
+# limma for differential expression analysis
+
+
+```{r limma}
+
+library(limma)
+library(hgu133plus2.db)
+library(annotate)
+
+DE_pipe <- function(cff = cf.gf){
+  # make matrix
+  samples <- ph$disease_state %>% as.factor()
+  design <- model.matrix(~0 + samples)
+  colnames(design) <- c(dis_label_1, dis_label_2)
+  fit <- lmFit(exprs(cff$eset), design)
+  contrast.matrix <- makeContrasts(c(dis_label_1,dis_label_2), levels=design)
+  # compare
+  huvec_fits <- contrasts.fit(fit, contrast.matrix)
+  huvec_ebFit <- eBayes(huvec_fits)
+  tab <- topTable(huvec_ebFit, coef=1,lfc = 0.5, number = 1000)   
+}
+
+anno <- function(chip = hgu133plus2.db, t = tab){
+  gs2 <- AnnotationDbi::select(x = chip, keys = rownames(tab), keytype = 'PROBEID',
+                             columns = c('ENTREZID','GENENAME','SYMBOL')) %>% tbl_df()
+  tab$PROBEID <- rownames(tab)
+  tab <- left_join(tab, gs2) %>% tbl_df()
+}
+
+tab <- DE_pipe()
+tab <- anno()
+
+
+tab <- tab %>% dplyr::select(logFC, P.Value, ENTREZID, GENENAME, SYMBOL, PROBEID )
+knitr::kable(head(tab))
+```
+
+<br>
+
+# bicluster heatmap
+
+```{r heat}
+library(d3heatmap)
+library(preprocessCore)
+
+order_matrix <- function(data.matrix,ph){
+  df_dem <- data.frame(t(data.matrix))
+  df_dem$label <- ph$recur
+  df_dem <- df_dem[order(df_dem$label),]
+  df_dem$label <- NULL
+  order_matrix <- t(as.matrix(df_dem))
+  rownames(order_matrix) <- rownames(data.matrix)
+  order_matrix
+}
+
+normf <- function(m = data.matrix, de = tab){
+  tab0 <- de[ order(-tab$logFC), ] 
+  tab0 <- tab0[tab0$P.Value < pvalue & abs(tab0$logFC) > logfc,]
+  de_pids <- tab0$PROBEID
+  dem <- m[de_pids,]
+  
+  # colnames_dem <- ph$sample_name[order(ph$recur)]
+  colnames_dem <- ph$sample_name[match(colnames(dem), ph$file_name)]
+  rownames_dem <- de$ENTREZID[match(rownames(dem), de$PROBEID)]
+  # normalize in 2D; be careful, if tab0 is null, there will be Error thrown
+  dem <- t(normalize.quantiles(t(dem)))
+  dem <- normalize.quantiles(dem)
+  dimnames(dem) <- list(rownames_dem, colnames_dem)
+  dem
+}
+
+omatrix <- order_matrix(data.matrix,ph)
+dem <- normf()
+d3heatmap(dem, scale = "none", dendrogram = "none" )
+```
+
+```{r network}
+library("ROCR")
+library("bnlearn")
+library("Rgraphviz")
+library(readr)
+# dataset <- PCdf[3:10]
+# dataset <- tsne_df
+dataset <- data.frame(t(dem))[2:8]
+dataset$label <- ph$recur
+dis_set <- discretize(dataset, method = "interval", breaks = 2) # discrezation by bnlearn 
+net_stru <- rsmax2(dis_set) # mmhc; rsmax2; tabu; hc;
+img <- graphviz.plot(net_stru, highlight = list(nodes=node_label)) # visualized net structure
+
+```
