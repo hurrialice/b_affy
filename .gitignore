@@ -11,9 +11,3 @@ GDS5074.soft.gz
 *.tsv
 
 
-dir.R
-!data_matrix.rds
-!phenodata.rds
-!feature_table.rds
-!degs.rds
-.Rprofile.swp
