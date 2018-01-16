@@ -10,16 +10,19 @@ output:
     toc_float: true
     number_sections: true
 ---
-default variable
+# Setup
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(eval = TRUE, warning = FALSE, include = TRUE, tidy = TRUE, message = FALSE, cache = TRUE)
-setwd('F:/Project_group/Git_Project/FHIR/CEL_FILE')
+# setwd('F:/Project_group/Git_Project/FHIR/CEL_FILE')
+
+# basic setup for markdown, path information (beautiful idea from Haipeng!) and relevant packages
 
 path <- "data/"
 path.fmerc <- "data_fmerc/"
 path.tbi <- "data_tbi/"
 path.xrt <- "data_xrt/"
+
 
 file.data <- "data_matrix.rds"
 file.fmerc <- "FMERC.txt"
@@ -28,14 +31,30 @@ file.xrt <- "XRT.txt"
 
 csv_sep <- "\t"
 
+library(readr)
+library(Biobase)
+library(dplyr)
+library(GEOquery)
+library(simpleaffy)
+library(genefilter)
+library(magrittr)
+library(annotate)
+library(preprocessCore)
+library(hgu133plus2cdf)
+# qc
+library(RColorBrewer) # load colors for plots
+library(affyPLM) # pseudo images 
+library(arrayQualityMetrics) # one-click chip diagnosis
 ```
 
 <br>
 
-# choosing treating data
+# Select type
 
-```{r data}
-data_type <- "fmerc"
+Beautiful idea from Haipeng, i like this. Note that the pval and logfc are for bicolor heatmap only, which might not be important for now. (consider get rid of it?)
+
+```{r select_type, include=FALSE}
+data_type <- "tbi"
 
 if(data_type == "fmerc"){
     cel_path <-  paste(path,path.fmerc,sep="")
@@ -47,8 +66,8 @@ if(data_type == "fmerc"){
     name_2 <- 'Low'
     dis_label_1 <- 'FMERC_High'
     dis_label_2 <- 'FMERC_Low'
-    pvalue <- 2.423544e-37
-    logfc <- 0.6
+    pvalue <- 0.5323591 # for bicolor heatmap
+    logfc <- 0.5
     node_label <- 'label'
 }else if(data_type == "tbi"){
     cel_path <-  paste(path,path.tbi,sep="")
@@ -60,8 +79,8 @@ if(data_type == "fmerc"){
     name_2 <- '65_80'
     dis_label_1 <- 'TBI_0_10' 
     dis_label_2 <- 'TBI_65_80' 
-    pvalue <- 0.01
-    logfc <- 10.92
+    pvalue <- 0.05
+    logfc <- 0.6
     node_label <- 'label'
 }else if(data_type == "xrt"){
     cel_path <-  paste(path,path.xrt,sep="")
@@ -95,18 +114,79 @@ if(data_type == "fmerc"){
 ```
 <br>
 
-# data load and gcrma normalize
+# Load & Check
 
-```{r gcrma}
-library(dplyr)
-library(GEOquery)
-library(simpleaffy)
-library(genefilter)
-library(magrittr)
+Load all avialable celfiles and then check if all of them could be used (which is obviously not- -)
+
+```{r load_qc}
+# this section load, and control the quality of each chip
+# the aim is to identify the extreme outliers and kick them out= =
+
 
 # FMERC should be match with data files
 ph <- read.csv(paste(cel_path,cel_files,sep=""),sep=csv_sep) 
+# in case for naming problem (perhaps only in linux?), the following are needed - 
+# cfs <- paste0(cel_path, list.celfiles(cel_path))
+# cfs_rename <- sapply(cfs, function(char){gsub(" ", "_", char)}) %>% unname()`
+# mapply(file.rename,  from = cfs, to = cfs_rename)
 celfiles <- read.affy(covdesc=cel_files, path=cel_path)
+
+#### quality check ####
+qc_dir <- paste0(cel_path, "qc")
+dir.create(qc_dir)
+
+# Outlier detection
+arrayQualityMetrics(expressionset = celfiles,
+                    outdir = paste0(qc_dir, "/pre_report_", data_type),
+                    force = TRUE, do.logtransform = TRUE)
+
+# Perform probe-level metric calculations on the CEL files:
+celfiles.qc <- fitPLM(celfiles)
+
+# make the pesudo image for each chip
+dir.create(paste(qc_dir, "qc_pseImage", sep = "/"))
+for (i in 1:sum(type_1 + type_2)){
+        png_name <- paste(qc_dir, "qc_pseImage", 
+                          celfiles.qc@phenoData@data$sample[i], sep = "/")
+        png(filename = paste0(png_name, '.png') )
+        image(celfiles.qc, which=i, add.legend=TRUE)
+        dev.off()
+}
+
+```
+
+# Delete bad .cel files and modify default params
+
+This section delete the confounding and replicated samples from the ph object and re-read the celfiles and gcrma normalization.
+
+
+```{r modify_data}
+# identify data ids to remove
+if (data_type == "fmerc"){
+        remove.ids <- c(4, 17, 20, 19)
+}
+if (data_type == "tbi"){
+        remove.ids <- c(10, 6)
+}
+# input a numeric vector (the sample ids), enter the ids manually
+
+# to reset default params (from ph object)
+ph <- ph[-remove.ids,]
+write_tsv(ph, paste0(cel_path,"/", data_type,"_mod.txt"))
+cel_files <- paste0(data_type, "_mod.txt")
+celfiles <- read.affy(covdesc=cel_files, path=cel_path)
+
+type_1 <- table(ph$disease_state)[1] %>% unname()
+type_2 <- table(ph$disease_state)[2] %>% unname()
+```
+
+
+# Gcrma normalization and quality recheck
+
+In this section we use gcrma normalization to process the purified microarrays. Next another round of arrayqualitymetrics is used to see if quality plots are consistent with expectation.
+
+
+```{r gcrma_recheck}
 
 gcnorm_filter <- function(cf){
   cf.gcrma <- gcrma(cf)
@@ -117,18 +197,23 @@ gcnorm_filter <- function(cf){
 
 cf.gf <- gcnorm_filter(cf = celfiles)
 data.matrix <- cf.gf$eset %>% exprs
-# saveRDS(data.matrix, data_matrix)
+
+# recheck the data quality
+arrayQualityMetrics(expressionset = cf.gf$eset,
+                    outdir = paste0(qc_dir, "/post_report_", data_type),
+                    force = TRUE, do.logtransform = TRUE)
+# just check the html file
+# question - what is the problem with the line trend?
+
 ```
 
-<br>
 
 
-# dim reducing PCA and T-SNE
+# dim reduction PCA and T-SNE
 
 
 ```{r dim_reducing}
 library(Rtsne)
-library(magrittr)
 
 # ph <- read.csv(paste(cel_path,cel_files,sep=""),sep=csv_sep)
 # data.matrix <- readRDS(data_matrix)
@@ -145,20 +230,21 @@ make.pca <- function(dm = data.martix){
 
 PCdf <- make.pca()
 # sPCdf <- summary(PCdf)
-color=c(rep('red', type_1), rep('green', type_2))
-pairs(~PC1 + PC2 + PC3 + PC4 + PC5 + PC6,data = PCdf, 
+color=ifelse(ph$recur == ph$recur[1], "green", "red")
+pairs(~PC1 + PC2 + PC3,data = PCdf, 
       main="PCA", col = color) 
 
+llabels <- ph$recur
 
-labels <- c(rep(name_1, type_1), rep(name_2, type_2))
-set.seed(3)
-make.tsne <- function(df = t(data.matrix), lb = labels){
+
+set.seed(3000)
+make.tsne <- function(df = t(data.matrix)){
   data.tsne <- Rtsne(df, dims = 2, perplexity=6, verbose=TRUE, max_iter = 500, check_duplicates = FALSE)
   tsne_df <- as.data.frame(data.tsne$Y)
   tsne_df
 }
 
-tsne.plot <- function(lb = labels, dt = tsne_df){
+tsne.plot <- function(lb = llabels, dt = tsne_df){
   plot(dt, t='n', main="tsne")
   text(dt, labels=lb, col=color, cex = 0.8)
 }
@@ -167,6 +253,13 @@ tsne_df <- make.tsne()
 tsne.plot()
 
 ```
+
+
+<br>
+
+
+
+
 
 # hierarchical clustering for PCA and T-SNE
 
@@ -196,12 +289,11 @@ hclust_pipe(PCdf,method = 'PCA')
 hclust_pipe(tsne_df, method = 't-SNE')
 ```
 
-## future work for this section: 
 
-<br>
 
 # limma for differential expression analysis
 
+identify what genes are differentially expressed in the two groups
 
 ```{r limma}
 
@@ -215,7 +307,15 @@ DE_pipe <- function(cff = cf.gf){
   design <- model.matrix(~0 + samples)
   colnames(design) <- c(dis_label_1, dis_label_2)
   fit <- lmFit(exprs(cff$eset), design)
-  contrast.matrix <- makeContrasts(c(dis_label_1,dis_label_2), levels=design)
+  if (data_type == "tbi"){
+          contrast.matrix <- makeContrasts(TBI_65_80-TBI_0_10, levels=design)
+  }
+  else if (data_type == "fmerc"){
+          contrast.matrix <- makeContrasts(FMERC_High-FMERC_Low, levels=design)
+  }
+  else if (data_type == "xrt"){
+          contrast.matrix <- makeContrasts(XRT_Acute-XRT_unAcute, levels=design)
+  }
   # compare
   huvec_fits <- contrasts.fit(fit, contrast.matrix)
   huvec_ebFit <- eBayes(huvec_fits)
@@ -234,8 +334,37 @@ tab <- anno()
 
 
 tab <- tab %>% dplyr::select(logFC, P.Value, ENTREZID, GENENAME, SYMBOL, PROBEID )
+#save(tab, data.matrix, ph,file = 'whp_data1.RData')
+
 knitr::kable(head(tab))
 ```
+
+# save our data
+save the important data into .RData file, use data_type specific name for discrimination.
+
+```{r save_data}
+# save the needed to .RData for future load and comparative analysis # 
+modVarType <- function(v1, c1, dt) {
+  newc <- paste(c1, dt, sep = "_")
+  assign(newc, v1, envir = .GlobalEnv)
+  #browser()
+}
+
+cvarsToSave <- c("data.matrix", "ph", "tab", "data_type" )
+
+lapply(cvarsToSave, function(cvar){
+        var <- get(cvar)
+        #browser()
+        modVarType(v1 = var, c1 = cvar, dt = data_type)
+})
+
+save(list = paste(cvarsToSave, data_type, sep = '_'), 
+     file = paste(data_type, "backup.RData", sep = "_"))
+
+
+```
+
+
 
 <br>
 
@@ -244,6 +373,7 @@ knitr::kable(head(tab))
 ```{r heat}
 library(d3heatmap)
 library(preprocessCore)
+library(gplots)
 
 order_matrix <- function(data.matrix,ph){
   df_dem <- data.frame(t(data.matrix))
@@ -255,9 +385,9 @@ order_matrix <- function(data.matrix,ph){
   order_matrix
 }
 
-normf <- function(m = data.matrix, de = tab){
+normf <- function(m = omatrix, de = tab){
   tab0 <- de[ order(-tab$logFC), ] 
-  tab0 <- tab0[tab0$P.Value < pvalue & abs(tab0$logFC) > logfc,]
+  tab0 <- tab0[tab0$P.Value < 0.05 & abs(tab0$logFC) > 0.6,]
   de_pids <- tab0$PROBEID
   dem <- m[de_pids,]
   
@@ -273,20 +403,54 @@ normf <- function(m = data.matrix, de = tab){
 
 omatrix <- order_matrix(data.matrix,ph)
 dem <- normf()
-d3heatmap(dem, scale = "none", dendrogram = "none" )
+
+png(filename = paste0(data_type, "_heatmap.png"))
+heatmap.2(dem, Colv = F ,col = bluered, trace = "none", dendrogram = "row") #, Colv = F)
+dev.off()
+# d3heatmap(dem, scale = "none", dendrogram = "none")
 ```
 
-```{r network}
-library("ROCR")
-library("bnlearn")
-library("Rgraphviz")
-library(readr)
-# dataset <- PCdf[3:10]
-# dataset <- tsne_df
-dataset <- data.frame(t(dem))[2:8]
-dataset$label <- ph$recur
-dis_set <- discretize(dataset, method = "interval", breaks = 2) # discrezation by bnlearn 
-net_stru <- rsmax2(dis_set) # mmhc; rsmax2; tabu; hc;
-img <- graphviz.plot(net_stru, highlight = list(nodes=node_label)) # visualized net structure
+```{r clear_workspace}
+rm(list = ls())
+```
+
+
+# compare gene sets
+
+```{r Venn}
+load("fmerc_backup.RData")
+load("tbi_backup.RData")
+load("xrt_backup.RData")
+
+require(gplots) 
+
+## 
+fmerc <- tab_fmerc$SYMBOL
+tbi <- tab_tbi$SYMBOL
+xrt <- tab_xrt$SYMBOL
+
+# see intersect
+ft_inter <- intersect(fmerc, tbi)
+
+# plot Venn (raw)
+venn(list(GrpF=fmerc, GrpT=tbi))
+
+
+# find related pathways
+export2reactome <- function(genelist, csv_name){
+        df <- data.frame(gl = genelist)
+        write_csv(df, paste(csv_name, "_de.csv"))
+}
+mapply(export2reactome, genelist = list(fmerc, tbi, xrt), csv_name = c("fmerc", "tbi", "xrt"))
+export2reactome(ft_inter, csv_name = "ft_inter")
+
+
+# find enriched GO terms
+gProfileR::gprofiler(fmerc, max_p_value = 0.05)
+
+
 
 ```
+
+
+
